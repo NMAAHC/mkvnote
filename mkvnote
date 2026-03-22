@@ -255,6 +255,19 @@ _check_dependencies(){
 _maketemp(){ mktemp -q -t "$(basename "$0")" || { echo "${ERROR}Can't create temp file${RESET}"; exit 1; }; }
 _temprm(){ RM_FILE="${1}" ; if [[ -f "${RM_FILE}" ]] ; then rm "${RM_FILE}" ; fi }
 _in_list(){ local item="$1"; shift; for x in "$@"; do [[ "$x" == "$item" ]] && return 0; done; return 1; }
+_write_tag_to_xml() {
+    local TAG_NAME="$1"
+    local TAG_VALUE="$2"
+    local XML_DRAFT="$3"
+    local ESCAPED_VALUE
+    ESCAPED_VALUE="$(printf '%s' "${TAG_VALUE}" | xmlstarlet esc)"
+    xml ed --omit-decl --inplace \
+        --subnode "/Tags/Tag[(not(Targets) or count(Targets/*)=0) and not(Simple/Name='${TAG_NAME}')]" --type elem -n "Simple" \
+        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(Name)]" --type elem -n "Name" -v "${TAG_NAME}" \
+        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(String)]" --type elem -n "String" -v "${ESCAPED_VALUE}" \
+        "${XML_DRAFT}"
+}
+
 
 _check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv cowsay
 
@@ -423,11 +436,7 @@ if [[ "${EXTENSION}" == "csv" ]] ; then
                         --update "(/Tags/Tag[Simple/Name='${TAG_NAME}'])[last()]/Simple[Name='${TAG_NAME}']/String" -v "${TAG_VALUE}" \
                         "${XML_DRAFT}"
                 else
-                    xml ed --omit-decl --inplace \
-                        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]" --type elem -n "Simple" \
-                        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(Name)]" --type elem -n "Name" -v "${TAG_NAME}" \
-                        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(String)]" --type elem -n "String" -v "${TAG_VALUE}" \
-                        "${XML_DRAFT}"
+                    _write_tag_to_xml "${TAG_NAME}" "${TAG_VALUE}" "${XML_DRAFT}"
                 fi
             fi
             printf "%-22s" "$TAG_NAME"
@@ -811,7 +820,7 @@ elif [[ "${EXIT_STATUS}" == "Tag-On!" ]] ; then
             ((TAG_COUNT++))
             _log "INFO" "Setting tag: ${TAG_NAME}"
             echo "${TAG_NAME} ... (${TAG_VALUE})"
-            xml ed --omit-decl --inplace --subnode "/Tags/Tag[not(Simple/Name='${TAG_NAME}')]" --type elem -n "Simple" --subnode "/Tags/Tag/Simple[not(Name)]" --type elem -n "Name" -v "${TAG_NAME}" --subnode "/Tags/Tag/Simple[not(String)]" --type elem -n "String" -v "$(echo -e "${TAG_VALUE}" | xmlstarlet esc)" "${XML_DRAFT}"
+            _write_tag_to_xml "${TAG_NAME}" "${TAG_VALUE}" "${XML_DRAFT}"
         fi
     done
 
