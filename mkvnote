@@ -316,20 +316,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--csv)
             MKV2CSV="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -i|--info)
             MKVINFO="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -ii)
             MKVINFO="Y"
             MKVINFO_RAW="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -d|--drop)
             MKVGLOBALRM="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -*)
             echo "${ERROR}✗ Unknown option: $1${RESET}"
@@ -806,8 +802,6 @@ elif [[ "${EXIT_STATUS}" == "Tag-On!" ]] ; then
     _log "INFO" "Processing tags for XML generation"
     echo "<Tags><Tag></Tag></Tags>" > "${XML_DRAFT}"
 
-    READ_MULTILINE=0
-    PARSING_COUNTER=0
     TO_BE_PARSED="${#LIST_OF_KEYS[@]}"
 
     DATA_TO_PARSE="$(echo "${DIALOG_RESULT}" | grep -v "^EXIT=")"
