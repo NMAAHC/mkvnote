@@ -268,6 +268,31 @@ _write_tag_to_xml() {
         "${XML_DRAFT}"
 }
 
+_write_tags_to_mkv() {
+    local XML_DRAFT="$1"
+    local INPUT_FILE="$2"
+    local MODE="${3:-global}"   # "global" or "all"
+    
+    _log "INFO" "Writing tags to MKV file"
+    MKVPROPEDIT_OUTPUT=$(mkvpropedit --tags "${MODE}:${XML_DRAFT}" "${INPUT_FILE}" 2>&1)
+    MKVPROPEDIT_STATUS=$?
+    _log "DEBUG" "mkvpropedit exit status: ${MKVPROPEDIT_STATUS}"
+    _log "DEBUG" "mkvpropedit output: ${MKVPROPEDIT_OUTPUT}"
+    
+    if [[ ${MKVPROPEDIT_STATUS} -eq 0 ]]; then
+        _log "INFO" "Tags written successfully"
+        _log "INFO" "mkvnote completed successfully"
+        return 0
+    else
+        _log "ERROR" "mkvpropedit failed with status ${MKVPROPEDIT_STATUS}"
+        _log "ERROR" "Output: ${MKVPROPEDIT_OUTPUT}"
+        echo "${ERROR}✗ Error writing tags to ${INPUT_FILE}${RESET}"
+        echo "  ${DIM}${MKVPROPEDIT_OUTPUT}${RESET}"
+        echo "  ${DIM}See log file for details: ${LOG_FILE}${RESET}"
+        return 1
+    fi
+}
+
 
 _check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv cowsay
 
@@ -448,19 +473,7 @@ if [[ "${EXTENSION}" == "csv" ]] ; then
         _log "INFO" "XML build complete with ${TAG_COUNT} tags"
         _log_xml "${XML_DRAFT}"
         
-        _log "INFO" "Writing tags to MKV file"
-        MKVPROPEDIT_OUTPUT=$(mkvpropedit --tags "all:${XML_DRAFT}" "${FILE_IN_CSV}" 2>&1)
-        MKVPROPEDIT_STATUS=$?
-        _log "DEBUG" "mkvpropedit exit status: ${MKVPROPEDIT_STATUS}"
-        _log "DEBUG" "mkvpropedit output: ${MKVPROPEDIT_OUTPUT}"
-        
-        if [[ ${MKVPROPEDIT_STATUS} -eq 0 ]]; then
-            _log "INFO" "Tags written successfully"
-            _log "INFO" "mkvnote completed successfully"
-        else
-            _log "ERROR" "mkvpropedit failed with status ${MKVPROPEDIT_STATUS}"
-            _log "ERROR" "Output: ${MKVPROPEDIT_OUTPUT}"
-        fi
+        _write_tags_to_mkv "${XML_DRAFT}" "${FILE_IN_CSV}" "all"
 
     done < <(xmlstarlet sel -t -m "/csv/row/${FILENAME_COLUMN_NAME}" -v . -n "${CSV_XML}")
 
@@ -827,22 +840,6 @@ elif [[ "${EXIT_STATUS}" == "Tag-On!" ]] ; then
     _log "INFO" "XML build complete with ${TAG_COUNT} tags"
     _log_xml "${XML_DRAFT}"
     
-    _log "INFO" "Writing tags to MKV file"
-    MKVPROPEDIT_OUTPUT=$(mkvpropedit --tags "global:${XML_DRAFT}" "${INPUT_FILE}" 2>&1)
-    MKVPROPEDIT_STATUS=$?
-    _log "DEBUG" "mkvpropedit exit status: ${MKVPROPEDIT_STATUS}"
-    _log "DEBUG" "mkvpropedit output: ${MKVPROPEDIT_OUTPUT}"
-    
-    if [[ ${MKVPROPEDIT_STATUS} -eq 0 ]]; then
-        _log "INFO" "Tags written successfully"
-        _log "INFO" "mkvnote completed successfully"
-        cowsay "Cool. Done. Enjoy. Tag-on. ${INPUT_FILE}.${RESET}"
-    else
-        _log "ERROR" "mkvpropedit failed with status ${MKVPROPEDIT_STATUS}"
-        _log "ERROR" "Output: ${MKVPROPEDIT_OUTPUT}"
-        echo "${ERROR}✗ Error writing tags${RESET}"
-        echo "  ${DIM}${MKVPROPEDIT_OUTPUT}${RESET}"
-        echo "  ${DIM}See log file for details: ${LOG_FILE}${RESET}"
-        exit 1
-    fi
+    _write_tags_to_mkv "${XML_DRAFT}" "${INPUT_FILE}" "global" || exit 1
+    cowsay "Cool. Done. Enjoy. Tag-on. ${INPUT_FILE}.${RESET}"
 fi
