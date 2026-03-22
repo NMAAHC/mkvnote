@@ -529,9 +529,9 @@ if [[ "$MKVGLOBALRM" == "Y" ]] ; then
             TEMP_XML="$(_maketemp).xml"
             mkvextract tags "${INPUT_FILE}" | xmlstarlet ed -d "//Tag[Targets/*]" -d '//Simple[Name != "ENCODER"]' > "${TEMP_XML}"
             mkvpropedit --tags "global:${TEMP_XML}" "${INPUT_FILE}"
+            _temprm "${TEMP_XML}"
+            echo "Thx. Global tags are gone now from $(basename "${INPUT_FILE}")."
         done
-        _temprm "${TEMP_XML}"
-        echo "Thx. Global tags are gone now from $(basename "${INPUT_FILE}")."
     else
         echo "np"
     fi
