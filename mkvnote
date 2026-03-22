@@ -256,7 +256,7 @@ _maketemp(){ mktemp -q -t "$(basename "$0")" || { echo "${ERROR}Can't create tem
 _temprm(){ RM_FILE="${1}" ; if [[ -f "${RM_FILE}" ]] ; then rm "${RM_FILE}" ; fi }
 _in_list(){ local item="$1"; shift; for x in "$@"; do [[ "$x" == "$item" ]] && return 0; done; return 1; }
 
-_check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv
+_check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv cowsay
 
 # Handle no arguments
 if [[ $# -eq 0 ]]; then
