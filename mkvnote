@@ -253,11 +253,48 @@ _check_dependencies(){
 # Section 4.2: File and Text Processing Utilities
 # ================================
 _maketemp(){ mktemp -q -t "$(basename "$0")" || { echo "${ERROR}Can't create temp file${RESET}"; exit 1; }; }
-_escape_xml(){ perl -pe 's/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/'"'"'/&apos;/g; s/"/&quot;/g'; }
 _temprm(){ RM_FILE="${1}" ; if [[ -f "${RM_FILE}" ]] ; then rm "${RM_FILE}" ; fi }
 _in_list(){ local item="$1"; shift; for x in "$@"; do [[ "$x" == "$item" ]] && return 0; done; return 1; }
+_write_tag_to_xml() {
+    local TAG_NAME="$1"
+    local TAG_VALUE="$2"
+    local XML_DRAFT="$3"
+    local ESCAPED_VALUE
+    ESCAPED_VALUE="$(printf '%s' "${TAG_VALUE}" | xmlstarlet esc)"
+    xml ed --omit-decl --inplace \
+        --subnode "/Tags/Tag[(not(Targets) or count(Targets/*)=0) and not(Simple/Name='${TAG_NAME}')]" --type elem -n "Simple" \
+        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(Name)]" --type elem -n "Name" -v "${TAG_NAME}" \
+        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(String)]" --type elem -n "String" -v "${ESCAPED_VALUE}" \
+        "${XML_DRAFT}"
+}
 
-_check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv
+_write_tags_to_mkv() {
+    local XML_DRAFT="$1"
+    local INPUT_FILE="$2"
+    local MODE="${3:-global}"   # "global" or "all"
+    
+    _log "INFO" "Writing tags to MKV file"
+    MKVPROPEDIT_OUTPUT=$(mkvpropedit --tags "${MODE}:${XML_DRAFT}" "${INPUT_FILE}" 2>&1)
+    MKVPROPEDIT_STATUS=$?
+    _log "DEBUG" "mkvpropedit exit status: ${MKVPROPEDIT_STATUS}"
+    _log "DEBUG" "mkvpropedit output: ${MKVPROPEDIT_OUTPUT}"
+    
+    if [[ ${MKVPROPEDIT_STATUS} -eq 0 ]]; then
+        _log "INFO" "Tags written successfully"
+        _log "INFO" "mkvnote completed successfully"
+        return 0
+    else
+        _log "ERROR" "mkvpropedit failed with status ${MKVPROPEDIT_STATUS}"
+        _log "ERROR" "Output: ${MKVPROPEDIT_OUTPUT}"
+        echo "${ERROR}✗ Error writing tags to ${INPUT_FILE}${RESET}"
+        echo "  ${DIM}${MKVPROPEDIT_OUTPUT}${RESET}"
+        echo "  ${DIM}See log file for details: ${LOG_FILE}${RESET}"
+        return 1
+    fi
+}
+
+
+_check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv cowsay
 
 # Handle no arguments
 if [[ $# -eq 0 ]]; then
@@ -279,20 +316,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         -c|--csv)
             MKV2CSV="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -i|--info)
             MKVINFO="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -ii)
             MKVINFO="Y"
             MKVINFO_RAW="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -d|--drop)
             MKVGLOBALRM="Y"
-            MULTI_INPUT_OK="yes"
             ;;
         -*)
             echo "${ERROR}✗ Unknown option: $1${RESET}"
@@ -424,11 +457,7 @@ if [[ "${EXTENSION}" == "csv" ]] ; then
                         --update "(/Tags/Tag[Simple/Name='${TAG_NAME}'])[last()]/Simple[Name='${TAG_NAME}']/String" -v "${TAG_VALUE}" \
                         "${XML_DRAFT}"
                 else
-                    xml ed --omit-decl --inplace \
-                        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]" --type elem -n "Simple" \
-                        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(Name)]" --type elem -n "Name" -v "${TAG_NAME}" \
-                        --subnode "/Tags/Tag[not(Targets) or count(Targets/*)=0]/Simple[not(String)]" --type elem -n "String" -v "${TAG_VALUE}" \
-                        "${XML_DRAFT}"
+                    _write_tag_to_xml "${TAG_NAME}" "${TAG_VALUE}" "${XML_DRAFT}"
                 fi
             fi
             printf "%-22s" "$TAG_NAME"
@@ -440,19 +469,7 @@ if [[ "${EXTENSION}" == "csv" ]] ; then
         _log "INFO" "XML build complete with ${TAG_COUNT} tags"
         _log_xml "${XML_DRAFT}"
         
-        _log "INFO" "Writing tags to MKV file"
-        MKVPROPEDIT_OUTPUT=$(mkvpropedit --tags "all:${XML_DRAFT}" "${FILE_IN_CSV}" 2>&1)
-        MKVPROPEDIT_STATUS=$?
-        _log "DEBUG" "mkvpropedit exit status: ${MKVPROPEDIT_STATUS}"
-        _log "DEBUG" "mkvpropedit output: ${MKVPROPEDIT_OUTPUT}"
-        
-        if [[ ${MKVPROPEDIT_STATUS} -eq 0 ]]; then
-            _log "INFO" "Tags written successfully"
-            _log "INFO" "mkvnote completed successfully"
-        else
-            _log "ERROR" "mkvpropedit failed with status ${MKVPROPEDIT_STATUS}"
-            _log "ERROR" "Output: ${MKVPROPEDIT_OUTPUT}"
-        fi
+        _write_tags_to_mkv "${XML_DRAFT}" "${FILE_IN_CSV}" "all"
 
     done < <(xmlstarlet sel -t -m "/csv/row/${FILENAME_COLUMN_NAME}" -v . -n "${CSV_XML}")
 
@@ -507,11 +524,11 @@ if [[ "$MKVINFO" == "Y" ]] ; then
         echo ""
         echo "Global tag report for: ${CYAN}${INPUT_FILE}${RESET}"
         echo "---------------------|---------------------"
-        mkvextract tags "${INPUT_FILE}" | xmlstarlet sel -t -m "Tags/Tag[not(Targets) or count(Targets/*)=0]" -m Simple  -v Name -o $'\t' -v String -o $'\037' | awk -v RS=$'\037' -F'\t' '{n = split($2, lines, /\r?\n/); printf "%-21s %s\n", $1, lines[1]; for(i=2; i<=n; i++) printf "%-21s %s\n", "", lines[i]; }' 
+        mkvextract tags "${INPUT_FILE}" | xmlstarlet sel -t -m "Tags/Tag[not(Targets) or count(Targets/*)=0]" -m Simple  -v Name -o $'\t' -v String -o $'\037' | xmlstarlet unesc | awk -v RS=$'\037' -F'\t' '{n = split($2, lines, /\r?\n/); printf "%-21s %s\n", $1, lines[1]; for(i=2; i<=n; i++) printf "%-21s %s\n", "", lines[i]; }' 
         if [[ "${MKVINFO_RAW}" == "Y" ]] ; then
             echo ""
             echo "${DIM}Literal: TAG=(value)${RESET}"
-            mkvextract tags "${INPUT_FILE}" | xmlstarlet sel -t -m "Tags/Tag[not(Targets) or count(Targets/*)=0]" -m Simple -v Name -o "=(" -v String -o ")" -n 
+            mkvextract tags "${INPUT_FILE}" | xmlstarlet sel -t -m "Tags/Tag[not(Targets) or count(Targets/*)=0]" -m Simple -v Name -o "=(" -v String -o ")" -n | xmlstarlet unesc
         fi
         echo
     done
@@ -528,12 +545,11 @@ if [[ "$MKVGLOBALRM" == "Y" ]] ; then
             shift
             echo "Deleting global tags for ${INPUT_FILE}..."
             TEMP_XML="$(_maketemp).xml"
-            mkvextract tags out2.mkv | xmlstarlet ed -d "//Tag[Targets/*]" -d '//Simple[Name != "ENCODER"]' > "${TEMP_XML}"
-            mkvpropedit --tags "global:" "${INPUT_FILE}"
+            mkvextract tags "${INPUT_FILE}" | xmlstarlet ed -d "//Tag[Targets/*]" -d '//Simple[Name != "ENCODER"]' > "${TEMP_XML}"
             mkvpropedit --tags "global:${TEMP_XML}" "${INPUT_FILE}"
+            _temprm "${TEMP_XML}"
+            echo "Thx. Global tags are gone now from $(basename "${INPUT_FILE}")."
         done
-        _temprm "${TEMP_XML}"
-        echo "Thx. Global tags are gone now from $(basename "${INPUT_FILE}")."
     else
         echo "np"
     fi
@@ -590,7 +606,7 @@ echo "${ATTACHMENT_LIST}" > "${ATTACHMENT_FILE}"
 _needs_file_input() {
     local VALUE="${1}"
     # Is it multilined?
-    [[ "${VALUE}" == *$'\n'* || "${VALUE}" == *$'\r'* ]] && return 0
+    [[ "${VALUE}" == *$'\n'* || "${VALUE}" == *$'\r'* || "${VALUE}" == *$'&'* ]] && return 0
     # Does it use special characters?
     [[ "${VALUE}" =~ [[:cntrl:]] ]] && return 0
     return 1
@@ -615,7 +631,7 @@ _make_field() {
         if _needs_file_input "${VALUE}"; then
             INPUT_CMD="<input file>${VALUE_FILE}</input>"
         else
-            VALUE="$(printf '%s' "${VALUE}" | _escape_xml)"
+            VALUE="$(cat "${VALUE_FILE}")"
             INPUT_CMD="<default>${VALUE}</default>"
         fi
     else
@@ -668,7 +684,7 @@ _make_field() {
 RO_FIELDS=""
 for TAG in "${RO_TAGS[@]}"; do
     TEMP_DIALOG_VALUE="$(_maketemp).txt"
-    xmlstarlet sel -t -m "/Tags/Tag[Targets='' or not(Targets) or (Targets/TargetTypeValue='50' and not(Targets/TrackUID))]/Simple[Name='${TAG}']" -v "String" "${EXTRACTED_TAGS}" > "${TEMP_DIALOG_VALUE}"
+    xmlstarlet sel -t -m "/Tags/Tag[Targets='' or not(Targets) or (Targets/TargetTypeValue='50' and not(Targets/TrackUID))]/Simple[Name='${TAG}']" -v "String" "${EXTRACTED_TAGS}" | xmlstarlet unesc > "${TEMP_DIALOG_VALUE}"
     LINE_COUNT="$(awk 'BEGIN{count=0} {count++} END{print count}' < "${TEMP_DIALOG_VALUE}")"
     if [[ "${LINE_COUNT}" -lt "2" ]] ; then
         RO_FIELDS+="$(_make_field "${TAG}" "${TEMP_DIALOG_VALUE}" "no"  "yes")"
@@ -688,7 +704,7 @@ while read EXISTING_KEY ; do
     _in_list "${EXISTING_KEY}" "${MKV_TAG_SET_NMAAHC[@]}" || continue
     [[ "${EXISTING_KEY}" == "ATTACHMENTS" ]] && continue
     TEMP_DIALOG_VALUE="$(_maketemp).txt"
-    xmlstarlet sel -t -m "/Tags/Tag[Targets='' or not(Targets) or (Targets/TargetTypeValue='50' and not(Targets/TrackUID))]/Simple[Name='${EXISTING_KEY}']" -v "String" "${EXTRACTED_TAGS}" > "${TEMP_DIALOG_VALUE}"
+    xmlstarlet sel -t -m "/Tags/Tag[Targets='' or not(Targets) or (Targets/TargetTypeValue='50' and not(Targets/TrackUID))]/Simple[Name='${EXISTING_KEY}']" -v "String" "${EXTRACTED_TAGS}" | xmlstarlet unesc > "${TEMP_DIALOG_VALUE}"
     LIST_OF_KEYS+=("${EXISTING_KEY}")
     DIALOG_LIST_EMBEDDED+="$(_make_field "${EXISTING_KEY}" "${TEMP_DIALOG_VALUE}" "if" "no")"
 done < "${EXISTING_TAGS}"
@@ -699,7 +715,7 @@ while read EXTRA_KEY ; do
     _in_list "${EXTRA_KEY}" "${MKV_TAG_SET_NMAAHC[@]}" && continue
     [[ "${EXTRA_KEY}" == "ATTACHMENTS" ]] && continue
     TEMP_DIALOG_VALUE="$(_maketemp).txt"
-    xmlstarlet sel -t -m "/Tags/Tag[Targets='' or not(Targets) or (Targets/TargetTypeValue='50' and not(Targets/TrackUID))]/Simple[Name='${EXTRA_KEY}']" -v "String" "${EXTRACTED_TAGS}" > "${TEMP_DIALOG_VALUE}"
+    xmlstarlet sel -t -m "/Tags/Tag[Targets='' or not(Targets) or (Targets/TargetTypeValue='50' and not(Targets/TrackUID))]/Simple[Name='${EXTRA_KEY}']" -v "String" "${EXTRACTED_TAGS}" | xmlstarlet unesc > "${TEMP_DIALOG_VALUE}"
     LIST_OF_KEYS+=("${EXTRA_KEY}")
     DIALOG_LIST_EXTRA+="$(_make_field "${EXTRA_KEY}" "${TEMP_DIALOG_VALUE}" "if" "no")"
 done < "${EXISTING_TAGS}"
@@ -786,8 +802,6 @@ elif [[ "${EXIT_STATUS}" == "Tag-On!" ]] ; then
     _log "INFO" "Processing tags for XML generation"
     echo "<Tags><Tag></Tag></Tags>" > "${XML_DRAFT}"
 
-    READ_MULTILINE=0
-    PARSING_COUNTER=0
     TO_BE_PARSED="${#LIST_OF_KEYS[@]}"
 
     DATA_TO_PARSE="$(echo "${DIALOG_RESULT}" | grep -v "^EXIT=")"
@@ -813,29 +827,13 @@ elif [[ "${EXIT_STATUS}" == "Tag-On!" ]] ; then
             ((TAG_COUNT++))
             _log "INFO" "Setting tag: ${TAG_NAME}"
             echo "${TAG_NAME} ... (${TAG_VALUE})"
-            xml ed --omit-decl --inplace --subnode "/Tags/Tag[not(Simple/Name='${TAG_NAME}')]" --type elem -n "Simple" --subnode "/Tags/Tag/Simple[not(Name)]" --type elem -n "Name" -v "${TAG_NAME}" --subnode "/Tags/Tag/Simple[not(String)]" --type elem -n "String" -v "$(echo -e "${TAG_VALUE}")" "${XML_DRAFT}"
+            _write_tag_to_xml "${TAG_NAME}" "${TAG_VALUE}" "${XML_DRAFT}"
         fi
     done
 
     _log "INFO" "XML build complete with ${TAG_COUNT} tags"
     _log_xml "${XML_DRAFT}"
     
-    _log "INFO" "Writing tags to MKV file"
-    MKVPROPEDIT_OUTPUT=$(mkvpropedit --tags "global:${XML_DRAFT}" "${INPUT_FILE}" 2>&1)
-    MKVPROPEDIT_STATUS=$?
-    _log "DEBUG" "mkvpropedit exit status: ${MKVPROPEDIT_STATUS}"
-    _log "DEBUG" "mkvpropedit output: ${MKVPROPEDIT_OUTPUT}"
-    
-    if [[ ${MKVPROPEDIT_STATUS} -eq 0 ]]; then
-        _log "INFO" "Tags written successfully"
-        _log "INFO" "mkvnote completed successfully"
-        cowsay "Cool. Done. Enjoy. Tag-on. ${INPUT_FILE}.${RESET}"
-    else
-        _log "ERROR" "mkvpropedit failed with status ${MKVPROPEDIT_STATUS}"
-        _log "ERROR" "Output: ${MKVPROPEDIT_OUTPUT}"
-        echo "${ERROR}✗ Error writing tags${RESET}"
-        echo "  ${DIM}${MKVPROPEDIT_OUTPUT}${RESET}"
-        echo "  ${DIM}See log file for details: ${LOG_FILE}${RESET}"
-        exit 1
-    fi
+    _write_tags_to_mkv "${XML_DRAFT}" "${INPUT_FILE}" "global" || exit 1
+    cowsay "Cool. Done. Enjoy. Tag-on. ${INPUT_FILE}.${RESET}"
 fi
