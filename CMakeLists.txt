@@ -8,7 +8,7 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Xml)
 
-add_executable(mkvnote-gui
+add_executable(mkvnote-gui WIN32
     main.cpp
     mainwindow.cpp
     mainwindow.h

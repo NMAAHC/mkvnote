@@ -1,0 +1,32 @@
+# $Id$
+# Maintainer: MediaArea.net SARL <info@mediaarea.net>
+
+pkgname=mkvnote
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Qt GUI for editing MKV file metadata tags according to NMAAHC archival standards"
+arch=('x86_64')
+url="https://mediaarea.net"
+license=('GPL-3.0')
+depends=('qt6-base' 'mediainfo' 'mkvtoolnix-cli')
+makedepends=('cmake' 'ninja')
+source=("${pkgname}_${pkgver}.tar.xz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "${pkgname}"
+}
+
+build() {
+    cmake -S "${pkgname}" -B build \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build build
+}
+
+package() {
+    DESTDIR="${pkgdir}" cmake --install build
+    install -Dm644 "${pkgname}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 "${pkgname}/README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

@@ -12,6 +12,18 @@ int main(int argc, char *argv[])
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("NMAAHC");
 
+    #if defined(Q_OS_MAC)
+    QDir binDir("/usr/local/lib/mkvnote/bin");
+    if (binDir.exists()) {
+        qputenv("PATH", (binDir.absolutePath() + ":" + qgetenv("PATH")).toLocal8Bit());
+    }
+    #elif defined(Q_OS_LINUX)
+    QDir binDir = QCoreApplication::applicationDirPath() + "/../libexec/mkvnote/bin";
+    if (binDir.exists()) {
+        qputenv("PATH", (binDir.absolutePath() + ":" + qgetenv("PATH")).toLocal8Bit());
+    }
+    #endif
+
     QString inputFile;
     if (argc >= 2) {
         inputFile = QString::fromLocal8Bit(argv[1]);

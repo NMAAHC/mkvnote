@@ -1,0 +1,31 @@
+Source: mkvnote
+Section: utils
+Priority: optional
+Maintainer: MediaArea.net SARL <info@mediaarea.net>
+Rules-Requires-Root: no
+Build-Depends: debhelper-compat (= 12), cmake, ninja-build, qt6-base-dev
+Standards-Version: 4.6.2
+Homepage: https://mediaarea.net
+
+Package: mkvnote
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, mediainfo, mkvtoolnix
+Description: mkvnote
+ .
+ GUI tool for editing MKV file metadata tags according to NMAAHC archival
+ standards. Provides a Qt GUI (mkvnote-gui) for viewing and modifying tags
+ embedded in Matroska video files.
+ .
+ mkvnote accepts either a <mkv_file> or <csv_file> as an input. If an mkv file
+ is used then a data entry GUI window will open. If a csv is used, the mkvnote
+ will embed the metadata of the csv into the associated mkv files. Note that
+ with a csv input the first column must be 'filename' and contain a path to
+ the associated mkv file.
+
+Package: mkvnote-dbg
+Section: debug
+Priority: optional
+Architecture: any
+Depends: mkvnote (= ${binary:Version}), ${misc:Depends}
+Description: debug symbols for mkvnote
+ Debug symbols for mkvnote binaries.

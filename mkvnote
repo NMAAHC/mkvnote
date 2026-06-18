@@ -410,6 +410,10 @@ _write_tags_from_extracted(){
     echo '</Tags>'
 }
 
+SCRIPT_DIR="$(realpath -- "$(dirname -- "${BASH_SOURCE[0]}")")"
+if [ -d "${SCRIPT_DIR}/../lib/mkvnote/bin" ] ; then
+    export PATH="${SCRIPT_DIR}/../lib/mkvnote/bin:${PATH}"
+fi
 _check_dependencies csvprintf xmlstarlet mkvpropedit mkvextract xml2csv
 
 if [[ ! -t 0 ]] && [[ $# -gt 0 ]]; then
@@ -731,6 +735,8 @@ if [[ -x "${SCRIPT_DIR}/mkvnote-gui" ]]; then
     "${SCRIPT_DIR}/mkvnote-gui" "${INPUT_FILE}"
 elif [[ -x "${SCRIPT_DIR}/_build/mkvnote-gui" ]]; then
     "${SCRIPT_DIR}/_build/mkvnote-gui" "${INPUT_FILE}"
+elif [[ -x "/Applications/mkvnote.app/Contents/MacOS/mkvnote-gui" ]]; then
+    "/Applications/mkvnote.app/Contents/MacOS/mkvnote-gui" "${INPUT_FILE}"
 elif command -v mkvnote-gui &>/dev/null; then
     mkvnote-gui "${INPUT_FILE}"
 else
